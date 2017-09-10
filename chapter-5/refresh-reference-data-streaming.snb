@@ -1,0 +1,287 @@
+{
+  "metadata": {
+    "id": "7ebf5557-84ed-4f34-8bf1-fdacb6839242",
+    "name": "refresh-reference-data-streaming",
+    "user_save_timestamp": "1970-01-01T01:00:00.000Z",
+    "auto_save_timestamp": "1970-01-01T01:00:00.000Z",
+    "language_info": {
+      "name": "scala",
+      "file_extension": "scala",
+      "codemirror_mode": "text/x-scala"
+    },
+    "trusted": true,
+    "sparkNotebook": null,
+    "customLocalRepo": null,
+    "customRepos": null,
+    "customDeps": null,
+    "customImports": null,
+    "customArgs": null,
+    "customSparkConf": null,
+    "customVars": null
+  },
+  "cells": [
+    {
+      "metadata": {
+        "id": "40AAFF23B9654D2A9B2E0C59515BAF8A"
+      },
+      "cell_type": "markdown",
+      "source": "# Refresh Reference Data"
+    },
+    {
+      "metadata": {
+        "id": "D5BA242BD89A48F3816A0D7F53206849"
+      },
+      "cell_type": "markdown",
+      "source": "In this notebook we continue our journey to improve our IoT streaming application.\nUp to now, we have a streaming job that processes randomly generated data as a stream. This stream is enriched using a fixed reference dataset that we load at start.\n\nThere is still an issue: We cannot add new sensors to our system. Once the reference dataset has been loaded and cached it cannot be changed from the outside world. A naive approach would be to remove the caching on the reference dataset and load the complete reference file on each streaming interval. Although this approach would work, it would not scale past certain file size. Loading data from secondary storage is costly and will consume computing resources that we would rather invest in processing the incoming data.\n\nIn this notebook we are going to explore a technique to amortize this cost. Instead of refreshing the dataset on each interval, we will cache the reference data for few interval and then we will refresh it. This process amortizes the cost over several streaming cycles, making it more \"affordable\".\n\nWe will be building on top of the previous notebooks and adding the new refresh logic. Refer to the *Learning Spark Streaming* book for a discussion of the delta changes in this notebook. "
+    },
+    {
+      "metadata": {
+        "id": "79CD566650664F04A8515F55A809A44D"
+      },
+      "cell_type": "markdown",
+      "source": "## Our Streaming dataset will consist of sensor information, containing the sensorId, a timestamp, and a value.\nFor the sake of simplicity in this self-contained example, we are going to generate a randomized dataset, using an scenario that simulates a real IoT use case.\nThe timestamp will be the time of execution and each record will be formatted as a string coming from \"the field\" of comma separated values.\n\nWe also add a bit of real-world chaos to the data: Due to weather conditions, some sensors publish corrupt data. "
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "1BA7507DA513491F8D3A1AED38F087CB"
+      },
+      "cell_type": "code",
+      "source": "val sensorCount = 100000\nval workDir = \"/tmp/learningsparkstreaming/\"\nval referenceFile = \"sensor-records.parquet\"\nval targetFile = \"enrichedIoTStream.parquet\"",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "9CA4FD2CB34F47AF8097D5E2A2BF97DA"
+      },
+      "cell_type": "code",
+      "source": "import scala.util.Random\nval sensorId: () => Int = () =>  Random.nextInt(sensorCount)\nval data: () => Double = () => Random.nextDouble\nval timestamp: () => Long = () => System.currentTimeMillis\nval recordFunction: () => String = { () => \n                                      if (Random.nextDouble < 0.9) {\n                                        Seq(sensorId().toString, timestamp(), data()).mkString(\",\")\n                                      } else {\n                                        \"!!~corrupt~^&##$\"                                   \n                                      }\n                                   }",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "5806B402E3314F15A0B21F46BC97FF4A"
+      },
+      "cell_type": "markdown",
+      "source": "### We use a particular trick that requires a moment of attention\nInstead of creating an RDD of text records, we create an RDD of record-generating functions. \nThen, each time the RDD is evaluated, the record function will generate a new random record. \nThis way we can simulate a realistic load of data that delivers a different set on each batch."
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "A9AADE76D9DA471B9708B80B3E765890"
+      },
+      "cell_type": "code",
+      "source": "val sensorDataGenerator = sparkContext.parallelize(1 to 100).map(_ => recordFunction)\nval sensorData = sensorDataGenerator.map(recordFun => recordFun())",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "BFF9E80BAB5C4D468154BCD6FB5C6501"
+      },
+      "cell_type": "markdown",
+      "source": "## We create our Streaming Context"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "83B2B58C552240BBA6FF518B1AD274EB"
+      },
+      "cell_type": "code",
+      "source": "import org.apache.spark.streaming.StreamingContext\nimport org.apache.spark.streaming.Seconds\n\nval streamingContext = new StreamingContext(sparkContext, Seconds(2))",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "4E6DBF82BB6F4B6584233CD460F67263"
+      },
+      "cell_type": "markdown",
+      "source": "## Our stream source will be a ConstantInputDStream fed by the record-generating RDD.\nBy combining a constant input DStream with the record generating RDD, we create a changing stream of data to process in our example.\n(This method makes the example self-contained. It removes the need of an external stream generating process)\n"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "DF03F66BDDE0447B8202D39F2C0202E2"
+      },
+      "cell_type": "code",
+      "source": "import org.apache.spark.streaming.dstream.ConstantInputDStream\nval rawDStream  = new ConstantInputDStream(streamingContext, sensorData)\n",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "62A5D12E89B24EFB8C411495942032B1"
+      },
+      "cell_type": "markdown",
+      "source": "# Load the initial reference data from a parquet file\nWe load the initial state of our reference data in the same way we did for the case of the static file. The only difference is that the reference is held in a mutable variable."
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "2CEA3423DAA1415584BC10519D2ACE9D"
+      },
+      "cell_type": "code",
+      "source": "var sensorRef = sparkSession.read.parquet(s\"$workDir/$referenceFile\")\nsensorRef.cache()",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": true,
+        "id": "E9EE391DF94E4FB79FCD1D9801BBF330"
+      },
+      "cell_type": "markdown",
+      "source": "# Let the Spark Streaming Scheduler refresh the data\n\nIn order to periodically load the reference data, we are going to 'hook' onto the Spark Streaming scheduler.\n\nAs we have mentioned before, at its heart, Spark Streaming is a high-performance scheduling framework on top of the Spark engine. We can take advantage of the Spark Streaming scheduling capabilities, to have it refresh our reference data in periodic intervals. We express that refresh interval as a `window` over the base `batch interval`. In practical terms, every `x` batches we are going to refresh our reference data. \n\nWe use a `ConstantInputDStream` with an empty `RDD`. This ensures that, at all times, we have an empty `DStream` whose only function will be to give us access to the scheduler through the `foreachRDD` function.\n\nAt each `window` interval, we will update the variable that points to the current `DataFrame`. This is a safe construction as the Spark Streaming scheduler will linearly execute the scheduled operations that are due at each `batch interval`. Therefore, the new data will be available for the upstream operations that make use of it.\n\nWe use caching to ensure that the reference dataset is only loaded once over the intervals that it's used in the streaming application.\nIt's also important to `cache` the expiring data that was previously cached in order to free resources in the cluster and ensure that we have a stable system from the perspective of resource consumption."
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "E15017FBFBB547FF888612C60F62F851"
+      },
+      "cell_type": "code",
+      "source": "import org.apache.spark.rdd.RDD\nval emptyRDD: RDD[Int] = sparkContext.emptyRDD\nval refreshDStream  = new ConstantInputDStream(streamingContext, emptyRDD)\nval refreshIntervalDStream = refreshDStream.window(Seconds(60), Seconds(60))\nrefreshIntervalDStream.foreachRDD{ _ =>\n  sensorRef.unpersist(false)\n  sensorRef = sparkSession.read.parquet(s\"$workDir/$referenceFile\")\n  sensorRef.cache()\n}\n  ",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "CCCB597031E7451FB59D18BA85C0E4A4"
+      },
+      "cell_type": "markdown",
+      "source": "# Providing Schema information for our streaming data\nAs before, we want to define and apply a schema to the data we are receiving.\nIn Scala, we can define a schema with a `case class`"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "E7A917C393654969812E6E38223BBA52"
+      },
+      "cell_type": "code",
+      "source": "case class SensorData(sensorId: Int, timestamp: Long, value: Double)",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "9AD1ACAD450E44DA8C046EB48CD4EE5A"
+      },
+      "cell_type": "markdown",
+      "source": "Now we apply that schema to the dstream, using the `flatMap` function.\n\nWe use `flatMap` instead of a `map` because there might be cases when the incoming data is incomplete or corrupted.\nIf we would use `map`, we would have to provide a resulting value for each transformed record. \nThat is something we cannot do for invalid records.\nWith `flatMap` in combination with `Option`, we can represent valid records as `Some(recordValue)` and invalid records as `None`.\nBy the virtue of `flatMap` the internal `Option` container gets flattend and our resulting stream will only contain valid `recordValue`s.\n\nDuring the parsing of the comma separated records, we not only protect ourselves against missing fields, but also parse the numeric values to their expected types. The surrounding `Try` captures any `NumberFormatException` that might arise from invalid records."
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "5285C2BBC1854F059AB8E1D0244AE1C7"
+      },
+      "cell_type": "code",
+      "source": "import scala.util.Try\nval schemaStream = rawDStream.flatMap{record => \n                                  val fields = record.split(\",\")\n                                  if (fields.size == 3) {\n                                    Try (SensorData(fields(0).toInt, fields(1).toLong, fields(2).toDouble)).toOption\n                                  } else { None }\n                                 }",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "7A7C144384904E96BE66A649BD193C15"
+      },
+      "cell_type": "markdown",
+      "source": "# Enrich the streaming data\nWith the schema stream in place, we can proceed to transform the underlying RDDs using DataFrames.\nWe are going to use the reference data to add the specific sensor information. Note that from the perspective of the core algorithm in this example, nothing has changed. We use the reference data as before to enrich our sensor information.\n\nAs before, we do this in the context of the general-purpose action `foreachRDD`. In this context, we can convert the incoming data to a `DataFrame` and use the `join` operation defined on `DataFrame`s to \n"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "99696609577F49DB809AF94C319CB449"
+      },
+      "cell_type": "code",
+      "source": "val stableSparkSession = sparkSession\nimport stableSparkSession.implicits._\nimport org.apache.spark.sql.SaveMode.Append\nschemaStream.foreachRDD{rdd => \n                        val sensorDF = rdd.toDF()\n                        val sensorWithInfo = sensorDF.join(sensorRef, \"sensorId\")\n                        val denormalizedSensorData =\n                            sensorWithInfo.withColumn(\"dnvalue\", $\"value\"*($\"maxRange\"-$\"minRange\")+$\"minRange\")\n                        val sensorRecords = denormalizedSensorData.drop(\"value\", \"maxRange\", \"minRange\")\n                        sensorRecords.write.format(\"parquet\").mode(Append).save(s\"$workDir/$targetFile\")\n                       }",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "F366201F2275412F818532AB671A55BC"
+      },
+      "cell_type": "code",
+      "source": "streamingContext.start()",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": true,
+        "id": "B6F0075E9BB04467858CABAA000489EF"
+      },
+      "cell_type": "markdown",
+      "source": "Be careful not to stop the context if you want the streaming process to continue. \n"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "1169F38EFAB44E5C89BE6D8C85035CCA"
+      },
+      "cell_type": "code",
+      "source": "streamingContext.stop(stopSparkContext=false, stopGracefully=true )",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "5BF4B4ECDC794A769ED429A2D35B8A38"
+      },
+      "cell_type": "markdown",
+      "source": "#Inspect the result\nWe can use the current Spark Session concurrently with the running Spark Streaming job in order to inspect the resulting data.\n"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "87973510A2E544B88D0825533CB24BC5"
+      },
+      "cell_type": "code",
+      "source": "val enrichedRecords = sparkSession.read.parquet(s\"$workDir/$targetFile\")\nenrichedRecords",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "03C77BDE93904F3A8BDD12B66B427E5A"
+      },
+      "cell_type": "code",
+      "source": "enrichedRecords.count",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": true,
+        "id": "EE4C39F5EBCF44BB81021B4B50015C68"
+      },
+      "cell_type": "code",
+      "source": "",
+      "outputs": []
+    }
+  ],
+  "nbformat": 4
+}
