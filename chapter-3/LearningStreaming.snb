@@ -1,0 +1,237 @@
+{
+  "metadata": {
+    "id": "256ac0ef-d7a9-409f-a59a-fd2ce6ee42c1",
+    "name": "LearningStreaming",
+    "user_save_timestamp": "1970-01-01T01:00:00.000Z",
+    "auto_save_timestamp": "1970-01-01T01:00:00.000Z",
+    "language_info": {
+      "name": "scala",
+      "file_extension": "scala",
+      "codemirror_mode": "text/x-scala"
+    },
+    "trusted": true,
+    "sparkNotebook": null,
+    "customLocalRepo": null,
+    "customRepos": null,
+    "customDeps": [
+      "org.apache.spark %% spark-streaming @ 2.1.0",
+      "org.apache.bahir %% spark-streaming-twitter % 2.1.0"
+    ],
+    "customImports": null,
+    "customArgs": null,
+    "customSparkConf": null,
+    "customVars": null
+  },
+  "cells": [
+    {
+      "metadata": {
+        "id": "E06591AD8AA74F1BBA6FA628F887B714"
+      },
+      "cell_type": "markdown",
+      "source": "Twitter Stream top-n HashTags\n================\nIn this notebook, we are going to explore Spark Streaming and the `DStream` API using Twitter as a stream source.\n"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "CD2D34DDB9A4465081C1F8D5EED2FEF9"
+      },
+      "cell_type": "code",
+      "source": "import org.apache.spark.streaming.{Seconds, StreamingContext}\nimport org.apache.spark.SparkContext._\nimport org.apache.spark.streaming.twitter._\n",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "66F3FB6D3D2C44789C0A00FBD6EF82F4"
+      },
+      "cell_type": "markdown",
+      "source": "To use the Twitter API, we require two pairs of credentials that can be created and retrieved from \n[Twitter Applications Console](https://apps.twitter.com/) : \n- consumer key\n- consumer secret\n- access token\n- access token secret\n\nHere, we define a helper function to facilitate setting these keys as `System Properties` expected by the `spark-streaming-twitter` API and the underlying library used (twitter4j)\n"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "4F95FF7380534E199F9B320776186355"
+      },
+      "cell_type": "code",
+      "source": "def configureTwitterCredentials(consumerKey: String,\n                                   consumerSecret: String,\n                                 accessToken: String,\n                          accessTokenSecret: String) {\n  val configs = Seq(\"consumerKey\" -> consumerKey,\n                    \"consumerSecret\" -> consumerSecret,\n                    \"accessToken\" -> accessToken,\n                    \"accessTokenSecret\" -> accessTokenSecret).toMap\n  val trimmedConfigs = configs.mapValues(_.trim)\n  configs.foreach{ case(key, value) =>\n    require(value.nonEmpty, s\"\"\"Error setting authentication - value for  $key  not set\"\"\")\n    val fullKey = \"twitter4j.oauth.\" + key\n    System.setProperty(fullKey, value)    }\n  }",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "2B0BEF3C97F0476781D6F3EDE9E8470F"
+      },
+      "cell_type": "markdown",
+      "source": "Set here your own credentials "
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "75E82BE86D83492888DF3F6CC6B4E906"
+      },
+      "cell_type": "code",
+      "source": "configureTwitterCredentials(\"\", \n                            \"\",\n                            \"\",\n                            \"\") ",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "0936863808084DF4815DF39D7CC1F3B2"
+      },
+      "cell_type": "markdown",
+      "source": "## We create a Streaming Context with a `streamingInterval` of 5 seconds"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "189742F12F6A4730BE186C8B96898DA2"
+      },
+      "cell_type": "code",
+      "source": "val ssc = new StreamingContext(sparkContext, Seconds(5))",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "649D1A10464342588BF3713287A402E4"
+      },
+      "cell_type": "markdown",
+      "source": "And create a `twitterStream` using the keyword `spark` as subscription filter."
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "A0825ADCBD91483B82732C02E636CFF8"
+      },
+      "cell_type": "code",
+      "source": "val filters = Array(\"music\")\nval twitterStream = TwitterUtils.createStream(ssc, None, filters)",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "52DCA2D36728413DB62D2230FB909F1A"
+      },
+      "cell_type": "markdown",
+      "source": "We are going to process the data from the Twitter subscription by:\n- extracting the `#hashtags` in the text of the tweet  \n- making each `#hashtag` a pair of the form `(#hashtag, 1)` to facilitate a count operation\n- reduce with a `sum` operation to obtain a count, using a window of `60` seconds\n- invert the resulting pairs: `(#hashtag, count)` to `(count, #hashtag)`\n- sort each batch of data (each `RDD` per streaming interval) to obtain a `top-n` score"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "CF39BFF9E477447486192BCA216EB8A9"
+      },
+      "cell_type": "code",
+      "source": "import StreamingContext._\nval hashTags = twitterStream.flatMap(status => status.getText.split(\" \").filter(_.startsWith(\"#\")))\n\nval topCounts60 = hashTags.map((_, 1)).reduceByKeyAndWindow(_ + _, Seconds(60))\n                          .map{case (topic, count) => (count, topic)}\n                          .transform(_.sortByKey(false))",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "9D8BE7B8B5EB4FA78D77EDA7FBC18A97"
+      },
+      "cell_type": "markdown",
+      "source": "We declare an `Unordered List` widget that will let us display the `top-n` results from the `DStream` "
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "A287B7F4744E40AD8D052D4B6F126643"
+      },
+      "cell_type": "code",
+      "source": "@transient val result = ul(10)\nresult",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "92C7F04D831F4CEE87A42A4DC11D5488"
+      },
+      "cell_type": "markdown",
+      "source": "(optional) Use some static test data to test the behaviour of the `Unordered List` widget"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "1B6F1C3043E14FEA93DF3505436CB23C"
+      },
+      "cell_type": "code",
+      "source": "result(Array(\"top-1\",\"top-2\",\"top-3\"))",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "48D85C80F3664134812B5B1663507559"
+      },
+      "cell_type": "markdown",
+      "source": "We use the generic output operation `foreachRDD` to retrieve the top-10 hashtags of the corresponding window and update the display by passing this data to the `result` widget."
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "55EF4D8B55BC43F0833324161BFD57A0"
+      },
+      "cell_type": "code",
+      "source": "topCounts60.foreachRDD(rdd => {\n  val topList = rdd.take(10).toList\n  val r = topList.map{case (count, tag) => s\"$tag: $count\"}\n  result(r)\n})",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "14C21F354E534D1EB564FBE76BF91D42"
+      },
+      "cell_type": "markdown",
+      "source": "Finally, we start the Streaming Context"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "303CDF07F5D945338B0E56FC924AFC68"
+      },
+      "cell_type": "code",
+      "source": "ssc.start()",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "ED021294EB1246FBAFD55D1CB2BD38F4"
+      },
+      "cell_type": "markdown",
+      "source": "When done, use the `stop` method to stop all streaming processing. We use the option to *not* stop the underlying `sparkContext`. That way we can restart the streaming job without having to restart the complete notebook kernel."
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "439A13CBFDDE43198BAC94B80556A853"
+      },
+      "cell_type": "code",
+      "source": "ssc.stop(stopSparkContext = false, stopGracefully = true)",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": true,
+        "id": "3C84BF88D08A4020858D633A828A2AE3"
+      },
+      "cell_type": "code",
+      "source": "",
+      "outputs": []
+    }
+  ],
+  "nbformat": 4
+}

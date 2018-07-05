@@ -1,0 +1,289 @@
+{
+  "metadata": {
+    "id": "057c00fd-2c79-4279-aba7-9fef1db5d27d",
+    "name": "better-joins-streaming-data",
+    "user_save_timestamp": "1970-01-01T01:00:00.000Z",
+    "auto_save_timestamp": "1970-01-01T01:00:00.000Z",
+    "language_info": {
+      "name": "scala",
+      "file_extension": "scala",
+      "codemirror_mode": "text/x-scala"
+    },
+    "trusted": true,
+    "sparkNotebook": null,
+    "customLocalRepo": null,
+    "customRepos": null,
+    "customDeps": null,
+    "customImports": null,
+    "customArgs": null,
+    "customSparkConf": null,
+    "customVars": null
+  },
+  "cells": [
+    {
+      "metadata": {
+        "id": "40AAFF23B9654D2A9B2E0C59515BAF8A"
+      },
+      "cell_type": "markdown",
+      "source": "# Improving Joins with Streaming Data"
+    },
+    {
+      "metadata": {
+        "id": "D5BA242BD89A48F3816A0D7F53206849"
+      },
+      "cell_type": "markdown",
+      "source": "In this notebook improves on the previous exercise where we started using joins:\n\nWe have a process that is able to generate random data and we created a streaming job that is able to consume, \nparse and save this data to a parquet file.\n\nWe are now interested in loading a parquet file containig the configuration for each sensor in our system and use that data to enrich the incoming sensor data. We would also like to avoid losing records for which we don't have a registered id.\n\nOn top of that, given that the amount of sensors known in our reference file is quite limited, we can improve performance by hinting Spark to use a broadcast join instead of the heavier shuffle-join."
+    },
+    {
+      "metadata": {
+        "id": "79CD566650664F04A8515F55A809A44D"
+      },
+      "cell_type": "markdown",
+      "source": "## Our Streaming dataset will consist of sensor information, containing the sensorId, a timestamp, and a value.\nFor the sake of simplicity in this self-contained example, we are going to generate a randomized dataset, using an scenario that simulates a real IoT use case.\nThe timestamp will be the time of execution and each record will be formatted as a string coming from \"the field\" of comma separated values.\n\nWe also add a bit of real-world chaos to the data: Due to weather conditions, some sensors publish corrupt data. "
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "1BA7507DA513491F8D3A1AED38F087CB"
+      },
+      "cell_type": "code",
+      "source": "val sensorCount = 100000\nval unknownSensors = 1000\nval workDir = \"/tmp/learningsparkstreaming/\"\nval referenceFile = \"sensor-records.parquet\"\nval targetFile = \"enrichedIoTStream.parquet\"\nval unknownSensorsTargetFile = \"unknownSensorsStream.parquet\"",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "9CA4FD2CB34F47AF8097D5E2A2BF97DA"
+      },
+      "cell_type": "code",
+      "source": "import scala.util.Random\nval sensorId: () => Int = () =>  Random.nextInt(sensorCount+unknownSensors)\nval data: () => Double = () => Random.nextDouble\nval timestamp: () => Long = () => System.currentTimeMillis\nval recordFunction: () => String = { () => \n                                      if (Random.nextDouble < 0.9) {\n                                        Seq(sensorId().toString, timestamp(), data()).mkString(\",\")\n                                      } else {\n                                        \"!!~corrupt~^&##$\"                                   \n                                      }\n                                   }",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "5806B402E3314F15A0B21F46BC97FF4A"
+      },
+      "cell_type": "markdown",
+      "source": "### We use a particular trick that requires a moment of attention\nInstead of creating an RDD of text records, we create an RDD of record-generating functions. \nThen, each time the RDD is evaluated, the record function will generate a new random record. \nThis way we can simulate a realistic load of data that delivers a different set on each batch."
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "A9AADE76D9DA471B9708B80B3E765890"
+      },
+      "cell_type": "code",
+      "source": "val sensorDataGenerator = sparkContext.parallelize(1 to 100).map(_ => recordFunction)\nval sensorData = sensorDataGenerator.map(recordFun => recordFun())",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "62A5D12E89B24EFB8C411495942032B1"
+      },
+      "cell_type": "markdown",
+      "source": "# Load the reference data from a parquet file\nWe also cache the data to keep it in memory and improve the performance of our steaming application"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "78E6ABA2D88B47F38905441B7D79E65D"
+      },
+      "cell_type": "code",
+      "source": "val sensorRef = sparkSession.read.parquet(s\"$workDir/$referenceFile\")\nsensorRef.cache()",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "9CBAE4C0C1EB48DBB802A0CC2960B2DB"
+      },
+      "cell_type": "markdown",
+      "source": "(Parquet files preserve the schema information, which we can retrieve from the DataFrame)"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "presentation": {
+          "tabs_state": "{\n  \"tab_id\": \"#tab886805482-0\"\n}",
+          "pivot_chart_state": "{\n  \"hiddenAttributes\": [],\n  \"menuLimit\": 200,\n  \"cols\": [],\n  \"rows\": [],\n  \"vals\": [],\n  \"exclusions\": {},\n  \"inclusions\": {},\n  \"unusedAttrsVertical\": 85,\n  \"autoSortUnusedAttrs\": false,\n  \"inclusionsInfo\": {},\n  \"aggregatorName\": \"Count\",\n  \"rendererName\": \"Table\"\n}"
+        },
+        "id": "774E09B823774494979FC8FE6AE3078F"
+      },
+      "cell_type": "code",
+      "source": "sensorRef.schema",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "BFF9E80BAB5C4D468154BCD6FB5C6501"
+      },
+      "cell_type": "markdown",
+      "source": "## We create our Streaming Context"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "83B2B58C552240BBA6FF518B1AD274EB"
+      },
+      "cell_type": "code",
+      "source": "import org.apache.spark.streaming.StreamingContext\nimport org.apache.spark.streaming.Seconds\n\nval streamingContext = new StreamingContext(sparkContext, Seconds(2))",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "4E6DBF82BB6F4B6584233CD460F67263"
+      },
+      "cell_type": "markdown",
+      "source": "## Our stream source will be a ConstantInputDStream fed by the record-generating RDD.\nBy combining a constant input DStream with the record generating RDD, we create a changing stream of data to process in our example.\n(This method makes the example self-contained. It removes the need of an external stream generating process)\n"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "DF03F66BDDE0447B8202D39F2C0202E2"
+      },
+      "cell_type": "code",
+      "source": "import org.apache.spark.streaming.dstream.ConstantInputDStream\nval rawDStream  = new ConstantInputDStream(streamingContext, sensorData)\n",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "CCCB597031E7451FB59D18BA85C0E4A4"
+      },
+      "cell_type": "markdown",
+      "source": "# Providing Schema information for our streaming data\nNow that we have a DStream of fresh data processed in a 2-second interval, we can start focusing on the gist of this example.\nFirst, we want to define and apply a schema to the data we are receiving.\nIn Scala, we can define a schema with a `case class`"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "E7A917C393654969812E6E38223BBA52"
+      },
+      "cell_type": "code",
+      "source": "case class SensorData(sensorId: Int, timestamp: Long, value: Double)",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "9AD1ACAD450E44DA8C046EB48CD4EE5A"
+      },
+      "cell_type": "markdown",
+      "source": "Now we apply that schema to the dstream, using the `flatMap` function.\n\nWe use `flatMap` instead of a `map` because there might be cases when the incoming data is incomplete or corrupted.\nIf we would use `map`, we would have to provide a resulting value for each transformed record. \nThat is something we cannot do for invalid records.\nWith `flatMap` in combination with `Option`, we can represent valid records as `Some(recordValue)` and invalid records as `None`.\nBy the virtue of `flatMap` the internal `Option` container gets flattend and our resulting stream will only contain valid `recordValue`s.\n\nDuring the parsing of the comma separated records, we not only protect ourselves against missing fields, but also parse the numeric values to their expected types. The surrounding `Try` captures any `NumberFormatException` that might arise from invalid records."
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "5285C2BBC1854F059AB8E1D0244AE1C7"
+      },
+      "cell_type": "code",
+      "source": "import scala.util.Try\nval schemaStream = rawDStream.flatMap{record => \n                                  val fields = record.split(\",\")\n                                  if (fields.size == 3) {\n                                    Try (SensorData(fields(0).toInt, fields(1).toLong, fields(2).toDouble)).toOption\n                                  } else { None }\n                                 }",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "7A7C144384904E96BE66A649BD193C15"
+      },
+      "cell_type": "markdown",
+      "source": "# Enrich the streaming data, without dropping records.\nWith the schema stream in place, we can proceed to transform the underlying RDDs into DataFrames.\n\nAs in the previous notebook, we are going to use the reference data to add the specific sensor information.\nPreviously, we used the default 'join', which is an inner-join that requires the join key to be available on both sides of the join.\nThis causes us to drop all data records for which we don't know the id. Given that new sensors might become available or misconfigured sensors might be sending an incorrect id, we would like to preserve all records in order to reconcile them in a latter stage.\n\nAs before, we do this in the context of the general-purpose action `foreachRDD`. "
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "99696609577F49DB809AF94C319CB449"
+      },
+      "cell_type": "code",
+      "source": "val stableSparkSession = sparkSession\nimport stableSparkSession.implicits._\nimport org.apache.spark.sql.SaveMode.Append\nschemaStream.foreachRDD{rdd => \n                        val sensorDF = rdd.toDF()\n                        val sensorWithInfo = sensorRef.join(broadcast(sensorDF), Seq(\"sensorId\"), \"rightouter\")\n                        val unknownSensors = sensorWithInfo.filter($\"sensorType\".isNull) \n                        val knownSensors = sensorWithInfo.filter(!$\"sensorType\".isNull) \n                        val denormalizedSensorData =\n                            knownSensors.withColumn(\"dnvalue\", $\"value\"*($\"maxRange\"-$\"minRange\")+$\"minRange\")\n                        val sensorRecords = denormalizedSensorData.drop(\"value\", \"maxRange\", \"minRange\")\n                        sensorRecords.write.format(\"parquet\").mode(Append).save(s\"$workDir/$targetFile\")\n                        unknownSensors.write.format(\"parquet\").mode(Append).save(s\"$workDir/$unknownSensorsTargetFile\")\n                       }",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "F366201F2275412F818532AB671A55BC"
+      },
+      "cell_type": "code",
+      "source": "streamingContext.start()",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "B6F0075E9BB04467858CABAA000489EF"
+      },
+      "cell_type": "code",
+      "source": "// Be careful not to stop the context if you want the streaming process to continue\nstreamingContext.stop(false)",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "id": "5BF4B4ECDC794A769ED429A2D35B8A38"
+      },
+      "cell_type": "markdown",
+      "source": "#Inspect the result\nWe can use the current Spark Session concurrently with the running Spark Streaming job in order to inspect the resulting data.\n"
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "87973510A2E544B88D0825533CB24BC5"
+      },
+      "cell_type": "code",
+      "source": "val enrichedRecords = sparkSession.read.parquet(s\"$workDir/$targetFile\")\nenrichedRecords",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "9224E4A6B30943FD8AC88441973B14C9"
+      },
+      "cell_type": "code",
+      "source": "val unknownRecords = sparkSession.read.parquet(s\"$workDir/$unknownSensorsTargetFile\")\nunknownRecords.count\nunknownRecords",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "03C77BDE93904F3A8BDD12B66B427E5A"
+      },
+      "cell_type": "code",
+      "source": "enrichedRecords.count",
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "input_collapsed": false,
+        "collapsed": false,
+        "id": "0560260836FA43538229F37AF9503EA5"
+      },
+      "cell_type": "code",
+      "source": "unknownRecords.count",
+      "outputs": []
+    }
+  ],
+  "nbformat": 4
+}
