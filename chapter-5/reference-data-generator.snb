@@ -24,7 +24,7 @@
       "id" : "05BA7B120BD24B44A94495B3B13DB04C"
     },
     "cell_type" : "markdown",
-    "source" : "#Sensor Reference Data Generator\nLearning Spark Streaming - supporting material\n\nThis notebook generates the fixed reference data used through in the IoT example of chapter 5"
+    "source" : "#Sensor Reference Data Generator\nLearning Spark Streaming - supporting material\n\nThis notebook generates the fixed reference data used through in the IoT examples"
   }, {
     "metadata" : {
       "trusted" : true,
@@ -33,11 +33,11 @@
       "id" : "40032AE70D9B4ABABFBC6EAA0A38F3B0"
     },
     "cell_type" : "code",
-    "source" : "val sensorCount = 100000\nval workDir = \"/tmp/learningsparkstreaming/\"\nval referenceFile = \"sensor-records.parquet\"",
+    "source" : [ "val sensorCount = 100000\n", "val workDir = \"/tmp/streaming-with-spark/\"\n", "val referenceFile = \"sensor-records.parquet\"" ],
     "outputs" : [ {
       "name" : "stdout",
       "output_type" : "stream",
-      "text" : "sensorCount: Int = 100000\nworkDir: String = /tmp/learningsparkstreaming/\nreferenceFile: String = sensor-records.parquet\n"
+      "text" : "sensorCount: Int = 100000\nworkDir: String = /tmp/streaming-with-spark/\nreferenceFile: String = sensor-records.parquet\n"
     }, {
       "metadata" : { },
       "data" : {
@@ -45,7 +45,7 @@
       },
       "output_type" : "execute_result",
       "execution_count" : 1,
-      "time" : "Took: 1.100s, at 2017-06-30 16:25"
+      "time" : "Took: 0.924s, at 2019-03-02 20:42"
     } ]
   }, {
     "metadata" : {
@@ -55,7 +55,7 @@
       "id" : "C9A22043B45445E48F2DD2839DB0116B"
     },
     "cell_type" : "code",
-    "source" : "case class SensorType(sensorType: String, unit: String, minRange: Double, maxRange: Double)",
+    "source" : [ "case class SensorType(sensorType: String, unit: String, minRange: Double, maxRange: Double)" ],
     "outputs" : [ {
       "name" : "stdout",
       "output_type" : "stream",
@@ -77,7 +77,7 @@
       "id" : "D28261212443425C8938630D60098A8C"
     },
     "cell_type" : "code",
-    "source" : "case class SensorReference(sensorId: Long, sensorType: String, unit: String, minRange: Double, maxRange: Double)",
+    "source" : [ "case class SensorReference(sensorId: Long, sensorType: String, unit: String, minRange: Double, maxRange: Double)" ],
     "outputs" : [ {
       "name" : "stdout",
       "output_type" : "stream",
@@ -99,7 +99,7 @@
       "id" : "FBDD084D0A4648FC80B7E8BC4F14A3F9"
     },
     "cell_type" : "code",
-    "source" : "val sensorTypes = List (\n  SensorType(\"humidity\", \"%Rh\", 0, 100),\n  SensorType(\"temperature\", \"oC\", -100, 100),\n  SensorType(\"brightness\", \"lux\", 0, 100000),\n  SensorType(\"rainfall\",\"mm/day\",0, 5000),\n  SensorType(\"windspeed\",\"m/s\", 0, 50),\n  SensorType(\"pressure\", \"mmHg\", 800, 1100),\n  SensorType(\"magnetism\", \"T\", 0, 1000),\n  SensorType(\"Radiation\", \"mSv\", 0.01, 10000)\n)\n\n  ",
+    "source" : [ "val sensorTypes = List (\n", "  SensorType(\"humidity\", \"%Rh\", 0, 100),\n", "  SensorType(\"temperature\", \"oC\", -100, 100),\n", "  SensorType(\"brightness\", \"lux\", 0, 100000),\n", "  SensorType(\"rainfall\",\"mm/day\",0, 5000),\n", "  SensorType(\"windspeed\",\"m/s\", 0, 50),\n", "  SensorType(\"pressure\", \"mmHg\", 800, 1100),\n", "  SensorType(\"magnetism\", \"T\", 0, 1000),\n", "  SensorType(\"Radiation\", \"mSv\", 0.01, 10000)\n", ")\n", "\n", "  " ],
     "outputs" : [ {
       "name" : "stdout",
       "output_type" : "stream",
@@ -121,7 +121,7 @@
       "id" : "B3C135CC5E0340928B1567700315991A"
     },
     "cell_type" : "code",
-    "source" : "val sensorIds = sparkSession.range(0, sensorCount)",
+    "source" : [ "val sensorIds = sparkSession.range(0, sensorCount)" ],
     "outputs" : [ {
       "name" : "stdout",
       "output_type" : "stream",
@@ -143,7 +143,7 @@
       "id" : "91C4D164711748C0A48D06854234213C"
     },
     "cell_type" : "code",
-    "source" : "import scala.util.Random\nval sensors = sensorIds.map{id => \n                            val sensorType = sensorTypes(Random.nextInt(sensorTypes.size))\n                            SensorReference(id, sensorType.sensorType, sensorType.unit, sensorType.minRange, sensorType.maxRange)\n                           }",
+    "source" : [ "import scala.util.Random\n", "val sensors = sensorIds.map{id => \n", "                            val sensorType = sensorTypes(Random.nextInt(sensorTypes.size))\n", "                            SensorReference(id, sensorType.sensorType, sensorType.unit, sensorType.minRange, sensorType.maxRange)\n", "                           }" ],
     "outputs" : [ {
       "name" : "stdout",
       "output_type" : "stream",
@@ -165,7 +165,7 @@
       "id" : "BB72B2989AE14D628301293C03B135F9"
     },
     "cell_type" : "code",
-    "source" : "sensors.show()",
+    "source" : [ "sensors.show()" ],
     "outputs" : [ {
       "name" : "stdout",
       "output_type" : "stream",
@@ -187,7 +187,7 @@
       "id" : "B88A683EFFDF47128101120929470552"
     },
     "cell_type" : "code",
-    "source" : "sensors.write.mode(\"overwrite\").parquet(s\"$workDir/$referenceFile\")\n",
+    "source" : [ "sensors.write.mode(\"overwrite\").parquet(s\"$workDir/$referenceFile\")\n" ],
     "outputs" : [ {
       "metadata" : { },
       "data" : {
@@ -205,7 +205,7 @@
       "id" : "5D0779C60E37488FBAC045BCCB34702C"
     },
     "cell_type" : "code",
-    "source" : "",
+    "source" : [ "" ],
     "outputs" : [ {
       "metadata" : { },
       "data" : {
