@@ -1,0 +1,220 @@
+{
+  "metadata" : {
+    "id" : "bac1b48e-b675-41c4-83cb-14cfddef6ac7",
+    "name" : "reference-data-generator",
+    "user_save_timestamp" : "1970-01-01T01:00:00.000Z",
+    "auto_save_timestamp" : "1970-01-01T01:00:00.000Z",
+    "language_info" : {
+      "name" : "scala",
+      "file_extension" : "scala",
+      "codemirror_mode" : "text/x-scala"
+    },
+    "trusted" : true,
+    "sparkNotebook" : null,
+    "customLocalRepo" : null,
+    "customRepos" : null,
+    "customDeps" : null,
+    "customImports" : null,
+    "customArgs" : null,
+    "customSparkConf" : null,
+    "customVars" : null
+  },
+  "cells" : [ {
+    "metadata" : {
+      "id" : "05BA7B120BD24B44A94495B3B13DB04C"
+    },
+    "cell_type" : "markdown",
+    "source" : "#Sensor Reference Data Generator\nLearning Spark Streaming - supporting material\n\nThis notebook generates the fixed reference data used through in the IoT examples"
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false,
+      "id" : "40032AE70D9B4ABABFBC6EAA0A38F3B0"
+    },
+    "cell_type" : "code",
+    "source" : [ "val sensorCount = 100000\n", "val workDir = \"/tmp/streaming-with-spark/\"\n", "val referenceFile = \"sensor-records.parquet\"" ],
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "sensorCount: Int = 100000\nworkDir: String = /tmp/streaming-with-spark/\nreferenceFile: String = sensor-records.parquet\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : ""
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 1,
+      "time" : "Took: 0.924s, at 2019-03-02 20:42"
+    } ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false,
+      "id" : "C9A22043B45445E48F2DD2839DB0116B"
+    },
+    "cell_type" : "code",
+    "source" : [ "case class SensorType(sensorType: String, unit: String, minRange: Double, maxRange: Double)" ],
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "defined class SensorType\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : ""
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 2,
+      "time" : "Took: 0.764s, at 2017-06-30 16:25"
+    } ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false,
+      "id" : "D28261212443425C8938630D60098A8C"
+    },
+    "cell_type" : "code",
+    "source" : [ "case class SensorReference(sensorId: Long, sensorType: String, unit: String, minRange: Double, maxRange: Double)" ],
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "defined class SensorReference\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : ""
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 3,
+      "time" : "Took: 0.690s, at 2017-06-30 16:25"
+    } ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false,
+      "id" : "FBDD084D0A4648FC80B7E8BC4F14A3F9"
+    },
+    "cell_type" : "code",
+    "source" : [ "val sensorTypes = List (\n", "  SensorType(\"humidity\", \"%Rh\", 0, 100),\n", "  SensorType(\"temperature\", \"oC\", -100, 100),\n", "  SensorType(\"brightness\", \"lux\", 0, 100000),\n", "  SensorType(\"rainfall\",\"mm/day\",0, 5000),\n", "  SensorType(\"windspeed\",\"m/s\", 0, 50),\n", "  SensorType(\"pressure\", \"mmHg\", 800, 1100),\n", "  SensorType(\"magnetism\", \"T\", 0, 1000),\n", "  SensorType(\"Radiation\", \"mSv\", 0.01, 10000)\n", ")\n", "\n", "  " ],
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "sensorTypes: List[SensorType] = List(SensorType(humidity,%Rh,0.0,100.0), SensorType(temperature,oC,-100.0,100.0), SensorType(brightness,lux,0.0,100000.0), SensorType(rainfall,mm/day,0.0,5000.0), SensorType(windspeed,m/s,0.0,50.0), SensorType(pressure,mmHg,800.0,1100.0), SensorType(magnetism,T,0.0,1000.0), SensorType(Radiation,mSv,0.01,10000.0))\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : ""
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 4,
+      "time" : "Took: 0.977s, at 2017-06-30 16:25"
+    } ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false,
+      "id" : "B3C135CC5E0340928B1567700315991A"
+    },
+    "cell_type" : "code",
+    "source" : [ "val sensorIds = sparkSession.range(0, sensorCount)" ],
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "sensorIds: org.apache.spark.sql.Dataset[Long] = [id: bigint]\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : ""
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 5,
+      "time" : "Took: 1.714s, at 2017-06-30 16:25"
+    } ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false,
+      "id" : "91C4D164711748C0A48D06854234213C"
+    },
+    "cell_type" : "code",
+    "source" : [ "import scala.util.Random\n", "val sensors = sensorIds.map{id => \n", "                            val sensorType = sensorTypes(Random.nextInt(sensorTypes.size))\n", "                            SensorReference(id, sensorType.sensorType, sensorType.unit, sensorType.minRange, sensorType.maxRange)\n", "                           }" ],
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "import scala.util.Random\nsensors: org.apache.spark.sql.Dataset[SensorReference] = [sensorId: bigint, sensorType: string ... 3 more fields]\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : ""
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 6,
+      "time" : "Took: 1.021s, at 2017-06-30 16:25"
+    } ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false,
+      "id" : "BB72B2989AE14D628301293C03B135F9"
+    },
+    "cell_type" : "code",
+    "source" : [ "sensors.show()" ],
+    "outputs" : [ {
+      "name" : "stdout",
+      "output_type" : "stream",
+      "text" : "+--------+-----------+------+--------+--------+\n|sensorId| sensorType|  unit|minRange|maxRange|\n+--------+-----------+------+--------+--------+\n|       0|   rainfall|mm/day|     0.0|  5000.0|\n|       1|  windspeed|   m/s|     0.0|    50.0|\n|       2|  magnetism|     T|     0.0|  1000.0|\n|       3|   rainfall|mm/day|     0.0|  5000.0|\n|       4|  Radiation|   mSv|    0.01| 10000.0|\n|       5|   rainfall|mm/day|     0.0|  5000.0|\n|       6|temperature|    oC|  -100.0|   100.0|\n|       7|  Radiation|   mSv|    0.01| 10000.0|\n|       8|   pressure|  mmHg|   800.0|  1100.0|\n|       9|   humidity|   %Rh|     0.0|   100.0|\n|      10|  Radiation|   mSv|    0.01| 10000.0|\n|      11|   pressure|  mmHg|   800.0|  1100.0|\n|      12|  windspeed|   m/s|     0.0|    50.0|\n|      13|   pressure|  mmHg|   800.0|  1100.0|\n|      14| brightness|   lux|     0.0|100000.0|\n|      15| brightness|   lux|     0.0|100000.0|\n|      16|temperature|    oC|  -100.0|   100.0|\n|      17|temperature|    oC|  -100.0|   100.0|\n|      18|   humidity|   %Rh|     0.0|   100.0|\n|      19|  Radiation|   mSv|    0.01| 10000.0|\n+--------+-----------+------+--------+--------+\nonly showing top 20 rows\n\n"
+    }, {
+      "metadata" : { },
+      "data" : {
+        "text/html" : ""
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 7,
+      "time" : "Took: 2.145s, at 2017-06-30 16:25"
+    } ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false,
+      "id" : "B88A683EFFDF47128101120929470552"
+    },
+    "cell_type" : "code",
+    "source" : [ "sensors.write.mode(\"overwrite\").parquet(s\"$workDir/$referenceFile\")\n" ],
+    "outputs" : [ {
+      "metadata" : { },
+      "data" : {
+        "text/html" : ""
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 8,
+      "time" : "Took: 2.235s, at 2017-06-30 16:25"
+    } ]
+  }, {
+    "metadata" : {
+      "trusted" : true,
+      "input_collapsed" : false,
+      "collapsed" : false,
+      "id" : "5D0779C60E37488FBAC045BCCB34702C"
+    },
+    "cell_type" : "code",
+    "source" : [ "" ],
+    "outputs" : [ {
+      "metadata" : { },
+      "data" : {
+        "text/html" : ""
+      },
+      "output_type" : "execute_result",
+      "execution_count" : 9,
+      "time" : "Took: 0.683s, at 2017-06-30 16:25"
+    } ]
+  } ],
+  "nbformat" : 4
+}
