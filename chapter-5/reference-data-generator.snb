@@ -24,7 +24,7 @@
       "id" : "05BA7B120BD24B44A94495B3B13DB04C"
     },
     "cell_type" : "markdown",
-    "source" : "#Sensor Reference Data Generator\nLearning Spark Streaming - supporting material\n\nThis notebook generates the fixed reference data used through in the IoT examples"
+    "source" : "#Sensor Reference Data Generator\n\nThis notebook generates the fixed reference dataset used through in the IoT examples.\n\nTo use, specify the target directory in the cell below and execute until the end."
   }, {
     "metadata" : {
       "trusted" : true,
@@ -33,7 +33,7 @@
       "id" : "40032AE70D9B4ABABFBC6EAA0A38F3B0"
     },
     "cell_type" : "code",
-    "source" : [ "val sensorCount = 100000\n", "val workDir = \"/tmp/streaming-with-spark/\"\n", "val referenceFile = \"sensor-records.parquet\"" ],
+    "source" : [ "val sensorCount = 100000\n", "val workDir = \"/tmp/streaming-with-spark\"\n", "val referenceFile = \"sensor-records.parquet\"" ],
     "outputs" : [ {
       "name" : "stdout",
       "output_type" : "stream",
@@ -45,7 +45,7 @@
       },
       "output_type" : "execute_result",
       "execution_count" : 1,
-      "time" : "Took: 0.924s, at 2019-03-02 20:42"
+      "time" : "Took: 1.024s, at 2019-05-12 17:47"
     } ]
   }, {
     "metadata" : {
@@ -67,7 +67,7 @@
       },
       "output_type" : "execute_result",
       "execution_count" : 2,
-      "time" : "Took: 0.764s, at 2017-06-30 16:25"
+      "time" : "Took: 0.755s, at 2019-05-12 17:47"
     } ]
   }, {
     "metadata" : {
@@ -89,7 +89,7 @@
       },
       "output_type" : "execute_result",
       "execution_count" : 3,
-      "time" : "Took: 0.690s, at 2017-06-30 16:25"
+      "time" : "Took: 0.650s, at 2019-05-12 17:47"
     } ]
   }, {
     "metadata" : {
@@ -111,7 +111,7 @@
       },
       "output_type" : "execute_result",
       "execution_count" : 4,
-      "time" : "Took: 0.977s, at 2017-06-30 16:25"
+      "time" : "Took: 0.696s, at 2019-05-12 17:47"
     } ]
   }, {
     "metadata" : {
@@ -133,7 +133,7 @@
       },
       "output_type" : "execute_result",
       "execution_count" : 5,
-      "time" : "Took: 1.714s, at 2017-06-30 16:25"
+      "time" : "Took: 1.471s, at 2019-05-12 17:47"
     } ]
   }, {
     "metadata" : {
@@ -155,7 +155,7 @@
       },
       "output_type" : "execute_result",
       "execution_count" : 6,
-      "time" : "Took: 1.021s, at 2017-06-30 16:25"
+      "time" : "Took: 1.084s, at 2019-05-12 17:47"
     } ]
   }, {
     "metadata" : {
@@ -169,7 +169,7 @@
     "outputs" : [ {
       "name" : "stdout",
       "output_type" : "stream",
-      "text" : "+--------+-----------+------+--------+--------+\n|sensorId| sensorType|  unit|minRange|maxRange|\n+--------+-----------+------+--------+--------+\n|       0|   rainfall|mm/day|     0.0|  5000.0|\n|       1|  windspeed|   m/s|     0.0|    50.0|\n|       2|  magnetism|     T|     0.0|  1000.0|\n|       3|   rainfall|mm/day|     0.0|  5000.0|\n|       4|  Radiation|   mSv|    0.01| 10000.0|\n|       5|   rainfall|mm/day|     0.0|  5000.0|\n|       6|temperature|    oC|  -100.0|   100.0|\n|       7|  Radiation|   mSv|    0.01| 10000.0|\n|       8|   pressure|  mmHg|   800.0|  1100.0|\n|       9|   humidity|   %Rh|     0.0|   100.0|\n|      10|  Radiation|   mSv|    0.01| 10000.0|\n|      11|   pressure|  mmHg|   800.0|  1100.0|\n|      12|  windspeed|   m/s|     0.0|    50.0|\n|      13|   pressure|  mmHg|   800.0|  1100.0|\n|      14| brightness|   lux|     0.0|100000.0|\n|      15| brightness|   lux|     0.0|100000.0|\n|      16|temperature|    oC|  -100.0|   100.0|\n|      17|temperature|    oC|  -100.0|   100.0|\n|      18|   humidity|   %Rh|     0.0|   100.0|\n|      19|  Radiation|   mSv|    0.01| 10000.0|\n+--------+-----------+------+--------+--------+\nonly showing top 20 rows\n\n"
+      "text" : "+--------+-----------+------+--------+--------+\n|sensorId| sensorType|  unit|minRange|maxRange|\n+--------+-----------+------+--------+--------+\n|       0|   pressure|  mmHg|   800.0|  1100.0|\n|       1|   rainfall|mm/day|     0.0|  5000.0|\n|       2| brightness|   lux|     0.0|100000.0|\n|       3|temperature|    oC|  -100.0|   100.0|\n|       4|   pressure|  mmHg|   800.0|  1100.0|\n|       5|   humidity|   %Rh|     0.0|   100.0|\n|       6| brightness|   lux|     0.0|100000.0|\n|       7|   pressure|  mmHg|   800.0|  1100.0|\n|       8|  windspeed|   m/s|     0.0|    50.0|\n|       9| brightness|   lux|     0.0|100000.0|\n|      10|temperature|    oC|  -100.0|   100.0|\n|      11| brightness|   lux|     0.0|100000.0|\n|      12|   pressure|  mmHg|   800.0|  1100.0|\n|      13|   humidity|   %Rh|     0.0|   100.0|\n|      14|  windspeed|   m/s|     0.0|    50.0|\n|      15|  magnetism|     T|     0.0|  1000.0|\n|      16|   pressure|  mmHg|   800.0|  1100.0|\n|      17|  Radiation|   mSv|    0.01| 10000.0|\n|      18|   pressure|  mmHg|   800.0|  1100.0|\n|      19|  Radiation|   mSv|    0.01| 10000.0|\n+--------+-----------+------+--------+--------+\nonly showing top 20 rows\n\n"
     }, {
       "metadata" : { },
       "data" : {
@@ -177,7 +177,7 @@
       },
       "output_type" : "execute_result",
       "execution_count" : 7,
-      "time" : "Took: 2.145s, at 2017-06-30 16:25"
+      "time" : "Took: 2.251s, at 2019-05-12 17:47"
     } ]
   }, {
     "metadata" : {
@@ -195,26 +195,18 @@
       },
       "output_type" : "execute_result",
       "execution_count" : 8,
-      "time" : "Took: 2.235s, at 2017-06-30 16:25"
+      "time" : "Took: 1.767s, at 2019-05-12 17:47"
     } ]
   }, {
     "metadata" : {
       "trusted" : true,
       "input_collapsed" : false,
-      "collapsed" : false,
-      "id" : "5D0779C60E37488FBAC045BCCB34702C"
+      "collapsed" : true,
+      "id" : "BC543FC3AFAD4B5CA57F180F23981707"
     },
     "cell_type" : "code",
     "source" : [ "" ],
-    "outputs" : [ {
-      "metadata" : { },
-      "data" : {
-        "text/html" : ""
-      },
-      "output_type" : "execute_result",
-      "execution_count" : 9,
-      "time" : "Took: 0.683s, at 2017-06-30 16:25"
-    } ]
+    "outputs" : [ ]
   } ],
   "nbformat" : 4
 }
