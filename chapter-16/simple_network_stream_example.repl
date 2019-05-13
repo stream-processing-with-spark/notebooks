@@ -1,0 +1,6 @@
+import org.apache.spark.streaming._
+val ssc = new StreamingContext(sc, Seconds(2))
+val dstream = ssc.socketTextStream("localhost", 8088)
+val countStream = dstream.count()
+countStream.print() 
+ssc.start()
